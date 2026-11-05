@@ -8,18 +8,18 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal, QTimer
-from PySide6.QtGui import (QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QIcon,
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
+from PySide6.QtGui import (QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QIcon, QPalette,
                            QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
                            QPolygonF, QShortcut)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QFrame, QGraphicsItem, QGraphicsObject, QGraphicsPathItem,
                                QGraphicsPolygonItem,
                                QGraphicsScene, QGraphicsSimpleTextItem,
                                QGraphicsView, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
                                QPushButton, QPlainTextEdit, QScrollArea,
-                               QSplitter, QVBoxLayout, QWidget)
+                                QSplitter, QTabWidget, QVBoxLayout, QWidget)
 
 from fluxograma import DARK, LIGHT
 
@@ -34,12 +34,28 @@ QWidget {
 QLabel { background: transparent; border: 0; }
 QMainWindow, QWidget#root { background: #0b1320; }
 
-QFrame#topbar, QFrame#panel, QFrame#canvasHeader, QFrame#canvasToolbar,
+QFrame#topbar, QFrame#canvasHeader, QFrame#canvasToolbar,
 QFrame#inspectorHeader {
   background: #121e2d;
   border: 1px solid #26394f;
   border-radius: 14px;
 }
+QFrame#panel {
+  background: #0f141a;
+  border: 0;
+  border-left: 1px solid #262b33;
+  border-radius: 0;
+}
+QWidget#inspectorPage { background: #0f141a; }
+QFrame#panel QLineEdit, QFrame#panel QPlainTextEdit, QFrame#panel QComboBox {
+  background: #090d12;
+  border-color: #242a33;
+  border-radius: 10px;
+}
+QFrame#panel QLineEdit:hover, QFrame#panel QPlainTextEdit:hover,
+QFrame#panel QComboBox:hover { border-color: #3b4653; }
+QFrame#panel QLineEdit:focus, QFrame#panel QPlainTextEdit:focus,
+QFrame#panel QComboBox:focus { border-color: #2dd4bf; }
 QLabel#brand {
   color: #71ddc8;
   font-size: 10.5pt;
@@ -79,6 +95,89 @@ QGroupBox::title {
   background: #172537;
 }
 QFormLayout QLabel { color: #a9bbcd; }
+
+QTabWidget#inspectorTabs::pane {
+  border: 0;
+  background: transparent;
+  top: -1px;
+}
+QTabBar#inspectorTabBar {
+  background: #090d12;
+  border: 1px solid #242a33;
+  border-radius: 12px;
+}
+QTabBar::tab {
+  background: transparent;
+  color: #8f9baa;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 9px 14px;
+  min-width: 90px;
+  font-weight: 600;
+}
+QTabBar::tab:selected {
+  background: #1b2432;
+  color: #edf2f7;
+  border-color: #303a48;
+}
+QTabBar::tab:hover:!selected { color: #d4dde7; background: #151c25; }
+QLabel#inspectorSectionTitle {
+  color: #8e9baa;
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+QLabel#fieldLabel { color: #aab5c2; font-weight: 550; }
+QFrame#inspectorDivider { background: #242a33; max-height: 1px; border: 0; }
+QFrame#themeSwitch {
+  background: #090d12;
+  border: 1px solid #242a33;
+  border-radius: 10px;
+}
+QPushButton#themeOption {
+  background: transparent;
+  color: #8995a4;
+  border: 1px solid transparent;
+  padding: 7px 8px;
+  min-height: 20px;
+}
+QPushButton#themeOption:checked {
+  background: #1b2432;
+  color: #eef3f8;
+  border-color: #303a48;
+}
+QFrame#inspectorSection { background: transparent; border: 0; }
+QLabel#emptyState {
+  color: #8995a4;
+  background: #121820;
+  border: 1px dashed #303945;
+  border-radius: 10px;
+  padding: 18px;
+}
+QListWidget#legendList {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+QListWidget#legendList::item { padding: 0; border: 0; background: transparent; }
+QFrame#legendCard {
+  background: #141b24;
+  border: 1px solid #262d37;
+  border-radius: 10px;
+}
+QFrame#legendCard[selected="true"] {
+  background: #18232d;
+  border-color: #2b887d;
+}
+QLabel#legendName { color: #e2e8ef; font-weight: 550; }
+QLabel#legendKind { color: #8a96a5; }
+QPushButton#legendAdd {
+  background: transparent;
+  color: #49d8c2;
+  border: 1px dashed #3b444e;
+  padding: 11px;
+}
+QPushButton#legendAdd:hover { background: #132321; border-color: #238c80; }
 
 QLineEdit, QPlainTextEdit, QComboBox, QListWidget {
   background: #0d1928;
@@ -809,52 +908,116 @@ class FlowEditorWindow(QMainWindow):
 
         panel = QFrame()
         panel.setObjectName("panel")
-        panel.setMinimumWidth(385)
-        panel.setMaximumWidth(470)
+        panel.setMinimumWidth(340)
+        panel.setMaximumWidth(500)
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(12, 12, 12, 12)
-        panel_layout.setSpacing(10)
-        inspector_header = QFrame()
-        inspector_header.setObjectName("inspectorHeader")
-        inspector_header_layout = QVBoxLayout(inspector_header)
-        inspector_header_layout.setContentsMargins(14, 11, 14, 11)
-        inspector_header_layout.setSpacing(3)
-        inspector_title = QLabel("Propriedades")
-        inspector_title.setObjectName("inspectorTitle")
-        inspector_hint = QLabel("Configure o fluxo e os elementos selecionados")
-        inspector_hint.setObjectName("inspectorHint")
-        inspector_header_layout.addWidget(inspector_title)
-        inspector_header_layout.addWidget(inspector_hint)
-        panel_layout.addWidget(inspector_header)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        form_root = QWidget()
-        forms = QVBoxLayout(form_root)
-        forms.setContentsMargins(4, 4, 4, 10)
-        forms.setSpacing(10)
+        panel_layout.setContentsMargins(12, 8, 8, 8)
+        panel_layout.setSpacing(0)
 
-        self.meta_group = QGroupBox("Fluxograma")
-        meta_form = QFormLayout(self.meta_group)
+        self.inspector_tabs = QTabWidget()
+        self.inspector_tabs.setObjectName("inspectorTabs")
+        self.inspector_tabs.setDocumentMode(True)
+        self.inspector_tabs.tabBar().setExpanding(True)
+        self.inspector_tabs.tabBar().setObjectName("inspectorTabBar")
+
+        def make_inspector_page():
+            page_scroll = QScrollArea()
+            page_scroll.setWidgetResizable(True)
+            page_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            page = QWidget()
+            page.setObjectName("inspectorPage")
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(8, 14, 8, 14)
+            page_layout.setSpacing(17)
+            page_scroll.setWidget(page)
+            return page_scroll, page_layout
+
+        def add_section_heading(layout, text):
+            heading = QLabel(text.upper())
+            heading.setObjectName("inspectorSectionTitle")
+            layout.addWidget(heading)
+
+        def add_field(layout, label_text, control):
+            field = QWidget()
+            field_layout = QVBoxLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(5)
+            label = QLabel(label_text)
+            label.setObjectName("fieldLabel")
+            field_layout.addWidget(label)
+            field_layout.addWidget(control)
+            layout.addWidget(field)
+            return field
+
+        def add_divider(layout):
+            divider = QFrame()
+            divider.setObjectName("inspectorDivider")
+            divider.setFixedHeight(1)
+            layout.addWidget(divider)
+
+        flow_scroll, flow_layout = make_inspector_page()
+        element_scroll, element_layout = make_inspector_page()
+        self.inspector_tabs.addTab(flow_scroll, "Fluxograma")
+        self.inspector_tabs.addTab(element_scroll, "Elemento")
+        panel_layout.addWidget(self.inspector_tabs)
+
+        self.meta_group = QFrame()
+        self.meta_group.setObjectName("inspectorSection")
+        meta_layout = QVBoxLayout(self.meta_group)
+        meta_layout.setContentsMargins(0, 0, 0, 0)
+        meta_layout.setSpacing(11)
+        add_section_heading(meta_layout, "Identificação")
         self.meta_title = QLineEdit()
         self.meta_eyebrow = QLineEdit()
         self.meta_description = CommitTextEdit()
-        self.meta_description.setMaximumHeight(76)
-        self.theme_combo = QComboBox()
+        self.meta_description.setFixedHeight(68)
+        add_field(meta_layout, "Título", self.meta_title)
+        add_field(meta_layout, "Linha auxiliar", self.meta_eyebrow)
+        add_field(meta_layout, "Descrição", self.meta_description)
+
+        theme_label = QLabel("Tema")
+        theme_label.setObjectName("fieldLabel")
+        meta_layout.addWidget(theme_label)
+        theme_switch = QFrame()
+        theme_switch.setObjectName("themeSwitch")
+        theme_layout = QHBoxLayout(theme_switch)
+        theme_layout.setContentsMargins(3, 3, 3, 3)
+        theme_layout.setSpacing(2)
+        self.theme_combo = QComboBox(panel)
         self.theme_combo.addItem("Escuro", "dark")
         self.theme_combo.addItem("Claro", "light")
-        meta_form.addRow("Título", self.meta_title)
-        meta_form.addRow("Linha auxiliar", self.meta_eyebrow)
-        meta_form.addRow("Descrição", self.meta_description)
-        meta_form.addRow("Tema", self.theme_combo)
-        forms.addWidget(self.meta_group)
+        self.theme_combo.addItem("Sistema", "system")
+        self.theme_combo.hide()
+        self.theme_buttons: dict[str, QPushButton] = {}
+        self.theme_button_group = QButtonGroup(self)
+        self.theme_button_group.setExclusive(True)
+        for caption, mode in (("Escuro", "dark"), ("Claro", "light"), ("Sistema", "system")):
+            button = QPushButton(caption)
+            button.setObjectName("themeOption")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, value=mode: self._theme_button_clicked(value))
+            self.theme_button_group.addButton(button)
+            self.theme_buttons[mode] = button
+            theme_layout.addWidget(button)
+        meta_layout.addWidget(theme_switch)
+        flow_layout.addWidget(self.meta_group)
+        add_divider(flow_layout)
 
-        self.defaults_group = QGroupBox("Padrões visuais")
-        defaults_form = QFormLayout(self.defaults_group)
+        self.defaults_group = QFrame()
+        self.defaults_group.setObjectName("inspectorSection")
+        defaults_layout = QVBoxLayout(self.defaults_group)
+        defaults_layout.setContentsMargins(0, 0, 0, 0)
+        defaults_layout.setSpacing(11)
+        add_section_heading(defaults_layout, "Padrões visuais")
         self.default_shape_combo = QComboBox()
         self.default_shape_combo.addItem("Retângulo", "box")
         self.default_shape_combo.addItem("Cápsula", "stadium")
         self.default_shape_combo.addItem("Decisão", "diamond")
+        add_field(defaults_layout, "Forma das novas etapas", self.default_shape_combo)
+        visual_row = QWidget()
+        visual_layout = QHBoxLayout(visual_row)
+        visual_layout.setContentsMargins(0, 0, 0, 0)
+        visual_layout.setSpacing(10)
         self.default_style_combo = QComboBox()
         for label, value in (("Normal", "normal"), ("Alternativa", "alt"),
                              ("Manual", "manual"), ("Encerrada", "bad")):
@@ -862,24 +1025,76 @@ class FlowEditorWindow(QMainWindow):
         self.default_edge_combo = QComboBox()
         self.default_edge_combo.addItem("Linha contínua", False)
         self.default_edge_combo.addItem("Tracejada", True)
-        defaults_hint = QLabel("Define o visual das próximas etapas e setas. O botão aplica o padrão ao fluxo inteiro.")
-        defaults_hint.setObjectName("sectionHint")
-        defaults_hint.setWordWrap(True)
-        defaults_form.addRow(defaults_hint)
-        defaults_form.addRow("Forma de novas etapas", self.default_shape_combo)
-        defaults_form.addRow("Estilo de novas etapas", self.default_style_combo)
-        defaults_form.addRow("Padrão das novas setas", self.default_edge_combo)
+        add_field(visual_layout, "Estilo", self.default_style_combo)
+        add_field(visual_layout, "Setas", self.default_edge_combo)
+        defaults_layout.addWidget(visual_row)
         self.apply_defaults_button = QPushButton("Aplicar a todas as etapas e setas")
         self.apply_defaults_button.setObjectName("accent")
+        self.apply_defaults_button.setToolTip(
+            "Aplicar o padrão visual escolhido ao fluxo inteiro.")
         self.apply_defaults_button.clicked.connect(self.apply_defaults)
-        defaults_form.addRow(self.apply_defaults_button)
-        forms.addWidget(self.defaults_group)
+        defaults_layout.addWidget(self.apply_defaults_button)
+        flow_layout.addWidget(self.defaults_group)
+        add_divider(flow_layout)
 
-        self.node_group = QGroupBox("Etapa selecionada")
-        node_form = QFormLayout(self.node_group)
+        self.legend_group = QFrame()
+        self.legend_group.setObjectName("inspectorSection")
+        legend_layout = QVBoxLayout(self.legend_group)
+        legend_layout.setContentsMargins(0, 0, 0, 0)
+        legend_layout.setSpacing(9)
+        add_section_heading(legend_layout, "Legenda")
+        self.legend_list = QListWidget()
+        self.legend_list.setObjectName("legendList")
+        self.legend_list.setMaximumHeight(250)
+        self.legend_list.currentRowChanged.connect(self._legend_selected)
+        legend_layout.addWidget(self.legend_list)
+
+        self.legend_editor = QFrame()
+        self.legend_editor.setObjectName("inspectorSection")
+        editor_layout = QVBoxLayout(self.legend_editor)
+        editor_layout.setContentsMargins(0, 4, 0, 4)
+        editor_layout.setSpacing(8)
+        self.legend_style_combo = QComboBox()
+        for label, value in (("Etapa normal", "normal"), ("Etapa alternativa", "alt"),
+                             ("Análise manual", "manual"), ("Encerrada", "bad"),
+                             ("Moldura", "frame")):
+            self.legend_style_combo.addItem(label, value)
+        self.legend_text = QLineEdit()
+        self.legend_text.setPlaceholderText("Ex.: Etapa automática")
+        add_field(editor_layout, "Símbolo", self.legend_style_combo)
+        add_field(editor_layout, "Significado", self.legend_text)
+        legend_actions = QHBoxLayout()
+        self.update_legend_button = QPushButton("Atualizar")
+        self.remove_legend_button = QPushButton("Remover")
+        self.update_legend_button.clicked.connect(self.update_legend)
+        self.remove_legend_button.clicked.connect(self.remove_legend)
+        legend_actions.addWidget(self.update_legend_button)
+        legend_actions.addWidget(self.remove_legend_button)
+        editor_layout.addLayout(legend_actions)
+        legend_layout.addWidget(self.legend_editor)
+        self._legend_new_item = False
+        self.add_legend_button = QPushButton("＋  Adicionar item")
+        self.add_legend_button.setObjectName("legendAdd")
+        self.add_legend_button.clicked.connect(self._legend_add_clicked)
+        legend_layout.addWidget(self.add_legend_button)
+        flow_layout.addWidget(self.legend_group)
+        flow_layout.addStretch(1)
+
+        self.element_empty = QLabel(
+            "Selecione uma etapa ou seta no fluxograma para editar suas propriedades.")
+        self.element_empty.setObjectName("emptyState")
+        self.element_empty.setWordWrap(True)
+        element_layout.addWidget(self.element_empty)
+
+        self.node_group = QFrame()
+        self.node_group.setObjectName("inspectorSection")
+        node_layout = QVBoxLayout(self.node_group)
+        node_layout.setContentsMargins(0, 0, 0, 0)
+        node_layout.setSpacing(10)
+        add_section_heading(node_layout, "Etapa selecionada")
         self.node_title = QLineEdit()
         self.node_sub = CommitTextEdit()
-        self.node_sub.setMaximumHeight(72)
+        self.node_sub.setFixedHeight(72)
         self.node_tag = QLineEdit()
         self.shape_combo = QComboBox()
         self.shape_combo.addItem("Retângulo", "box")
@@ -889,31 +1104,43 @@ class FlowEditorWindow(QMainWindow):
         for label, value in (("Normal", "normal"), ("Alternativa", "alt"),
                              ("Manual", "manual"), ("Encerrada", "bad")):
             self.style_combo.addItem(label, value)
-        node_form.addRow("Nome", self.node_title)
-        node_form.addRow("Detalhe", self.node_sub)
-        node_form.addRow("Etiqueta", self.node_tag)
-        node_form.addRow("Forma", self.shape_combo)
-        node_form.addRow("Estilo", self.style_combo)
+        add_field(node_layout, "Nome", self.node_title)
+        add_field(node_layout, "Detalhe", self.node_sub)
+        add_field(node_layout, "Etiqueta", self.node_tag)
+        node_row = QWidget()
+        node_row_layout = QHBoxLayout(node_row)
+        node_row_layout.setContentsMargins(0, 0, 0, 0)
+        node_row_layout.setSpacing(10)
+        add_field(node_row_layout, "Forma", self.shape_combo)
+        add_field(node_row_layout, "Estilo", self.style_combo)
+        node_layout.addWidget(node_row)
         self.delete_node_button = QPushButton("Excluir etapa")
         self.delete_node_button.setObjectName("danger")
         self.delete_node_button.clicked.connect(self.delete_selected_node)
-        node_form.addRow(self.delete_node_button)
-        forms.addWidget(self.node_group)
+        node_layout.addWidget(self.delete_node_button)
+        element_layout.addWidget(self.node_group)
 
-        self.edge_group = QGroupBox("Setas")
+        self.edge_group = QFrame()
+        self.edge_group.setObjectName("inspectorSection")
         edge_layout = QVBoxLayout(self.edge_group)
-        edge_hint = QLabel("Clique numa seta do desenho ou escolha-a na lista para editar pontas e traçado.")
+        edge_layout.setContentsMargins(0, 0, 0, 0)
+        edge_layout.setSpacing(9)
+        add_section_heading(edge_layout, "Setas")
+        edge_hint = QLabel("Selecione uma conexão para alterar o rótulo, as pontas ou o traçado.")
         edge_hint.setObjectName("sectionHint")
         edge_hint.setWordWrap(True)
         edge_layout.addWidget(edge_hint)
         self.edge_list = QListWidget()
-        self.edge_list.setMaximumHeight(150)
+        self.edge_list.setMaximumHeight(180)
         self.edge_list.currentRowChanged.connect(self._edge_selected)
         edge_layout.addWidget(self.edge_list)
-        edge_form = QFormLayout()
         self.edge_label = QLineEdit()
         self.edge_label.setPlaceholderText("Rótulo da seta (opcional)")
-        edge_form.addRow("Rótulo", self.edge_label)
+        add_field(edge_layout, "Rótulo", self.edge_label)
+        edge_options = QWidget()
+        edge_options_layout = QHBoxLayout(edge_options)
+        edge_options_layout.setContentsMargins(0, 0, 0, 0)
+        edge_options_layout.setSpacing(10)
         self.edge_out_combo = QComboBox()
         self.edge_into_combo = QComboBox()
         for combo in (self.edge_out_combo, self.edge_into_combo):
@@ -924,10 +1151,10 @@ class FlowEditorWindow(QMainWindow):
         self.edge_dashed_combo = QComboBox()
         self.edge_dashed_combo.addItem("Contínua", False)
         self.edge_dashed_combo.addItem("Tracejada", True)
-        edge_form.addRow("Origem", self.edge_out_combo)
-        edge_form.addRow("Destino", self.edge_into_combo)
-        edge_form.addRow("Traçado", self.edge_dashed_combo)
-        edge_layout.addLayout(edge_form)
+        add_field(edge_options_layout, "Origem", self.edge_out_combo)
+        add_field(edge_options_layout, "Destino", self.edge_into_combo)
+        edge_layout.addWidget(edge_options)
+        add_field(edge_layout, "Traçado", self.edge_dashed_combo)
         edge_actions = QHBoxLayout()
         self.invert_edge_button = QPushButton("Inverter direção")
         self.invert_edge_button.clicked.connect(self.invert_selected_edge)
@@ -937,48 +1164,10 @@ class FlowEditorWindow(QMainWindow):
         self.delete_edge_button.clicked.connect(self.delete_selected_edge)
         edge_actions.addWidget(self.delete_edge_button)
         edge_layout.addLayout(edge_actions)
-        forms.addWidget(self.edge_group)
-
-        self.legend_group = QGroupBox("Legenda")
-        legend_layout = QVBoxLayout(self.legend_group)
-        legend_hint = QLabel("Descreva o significado das cores ou formas usadas no diagrama.")
-        legend_hint.setObjectName("sectionHint")
-        legend_hint.setWordWrap(True)
-        legend_layout.addWidget(legend_hint)
-        self.legend_list = QListWidget()
-        self.legend_list.setMaximumHeight(160)
-        self.legend_list.currentRowChanged.connect(self._legend_selected)
-        legend_layout.addWidget(self.legend_list)
-        legend_form = QFormLayout()
-        self.legend_style_combo = QComboBox()
-        for label, value in (("Etapa normal", "normal"), ("Etapa alternativa", "alt"),
-                             ("Análise manual", "manual"), ("Encerrada", "bad"),
-                             ("Moldura", "frame")):
-            self.legend_style_combo.addItem(label, value)
-        self.legend_text = QLineEdit()
-        self.legend_text.setPlaceholderText("Ex.: Etapa automática")
-        legend_form.addRow("Símbolo", self.legend_style_combo)
-        legend_form.addRow("Significado", self.legend_text)
-        legend_layout.addLayout(legend_form)
-        legend_buttons = QHBoxLayout()
-        self.add_legend_button = QPushButton("Adicionar item")
-        self.add_legend_button.setObjectName("accent")
-        self.update_legend_button = QPushButton("Atualizar")
-        self.remove_legend_button = QPushButton("Remover")
-        self.add_legend_button.clicked.connect(self.add_legend)
-        self.update_legend_button.clicked.connect(self.update_legend)
-        self.remove_legend_button.clicked.connect(self.remove_legend)
-        legend_buttons.addWidget(self.add_legend_button)
-        legend_buttons.addWidget(self.update_legend_button)
-        legend_buttons.addWidget(self.remove_legend_button)
-        legend_layout.addLayout(legend_buttons)
-        forms.addWidget(self.legend_group)
-        forms.addStretch(1)
-
-        scroll.setWidget(form_root)
-        panel_layout.addWidget(scroll)
+        element_layout.addWidget(self.edge_group)
+        element_layout.addStretch(1)
         splitter.addWidget(panel)
-        splitter.setSizes([980, 450])
+        splitter.setSizes([1120, 360])
         outer.addWidget(splitter, 1)
         self.setCentralWidget(root)
         self.statusBar().showMessage("Arraste o fundo para mover a tela · arraste etapas para reposicionar · role para zoom", 7000)
@@ -1021,8 +1210,11 @@ class FlowEditorWindow(QMainWindow):
         self.meta_title.setText(meta.get("title", ""))
         self.meta_eyebrow.setText(meta.get("eyebrow", ""))
         self.meta_description.setPlainText(meta.get("description", ""))
-        index = self.theme_combo.findData(meta.get("theme", "dark"))
+        theme_mode = meta.get("theme_mode", meta.get("theme", "dark"))
+        index = self.theme_combo.findData(theme_mode)
         self.theme_combo.setCurrentIndex(max(0, index))
+        for mode, button in self.theme_buttons.items():
+            button.setChecked(mode == theme_mode)
         self.default_shape_combo.setCurrentIndex(max(0, self.default_shape_combo.findData(
             meta.get("default_shape", "box"))))
         self.default_style_combo.setCurrentIndex(max(0, self.default_style_combo.findData(
@@ -1034,6 +1226,7 @@ class FlowEditorWindow(QMainWindow):
         self._set_node_fields()
         self._set_edge_field()
         self._loading_form = False
+        self.element_empty.setVisible(self.selected_node is None and self.selected_edge is None)
         self._update_header()
 
     def _update_header(self) -> None:
@@ -1191,6 +1384,7 @@ class FlowEditorWindow(QMainWindow):
         self._set_edge_field()
         self._refresh_legend_list()
         self._loading_form = False
+        self.element_empty.setVisible(self.selected_node is None and self.selected_edge is None)
 
     def _set_node_fields(self) -> None:
         node = next((n for n in self.spec["nodes"] if n.get("id") == self.selected_node), None)
@@ -1238,23 +1432,62 @@ class FlowEditorWindow(QMainWindow):
             edge.get("dashed", False) if edge else False)))
 
     def _refresh_legend_list(self) -> None:
-        selected_row = self.legend_list.currentRow()
+        current_item = self.legend_list.currentItem()
+        selected_data = (current_item.data(Qt.ItemDataRole.UserRole)
+                         if current_item is not None else None)
         self.legend_list.blockSignals(True)
         self.legend_list.clear()
-        for style, label in self.spec.get("legend", []):
-            friendly = self._legend_style_name(style)
-            item = QListWidgetItem(self._legend_icon(style), f"{friendly}   ·   {label}")
-            item.setToolTip(f"{friendly}: {label}")
+        cards = [("normal", "Etapa normal", "Retângulo", -1),
+                 ("decision", "Decisão", "Losango", -1),
+                 ("bad", "Revisão manual", "Retângulo", -1)]
+        cards.extend((style, self._legend_style_name(style), label, index)
+                     for index, (style, label) in enumerate(self.spec.get("legend", [])))
+        restored_row = -1
+        for style, title, detail, data_index in cards:
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(240, 48))
+            item.setData(Qt.ItemDataRole.UserRole, data_index)
+            if data_index < 0:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            item.setToolTip(f"{title}: {detail}")
             self.legend_list.addItem(item)
-        if 0 <= selected_row < self.legend_list.count():
-            self.legend_list.setCurrentRow(selected_row)
+            row = self.legend_list.count() - 1
+            if data_index >= 0 and data_index == selected_data:
+                restored_row = row
+            card = QFrame()
+            card.setObjectName("legendCard")
+            card_layout = QHBoxLayout(card)
+            card_layout.setContentsMargins(10, 5, 10, 5)
+            card_layout.setSpacing(9)
+            icon = QLabel()
+            icon.setPixmap(self._legend_icon(style).pixmap(24, 20))
+            card_layout.addWidget(icon)
+            name = QLabel(title)
+            name.setObjectName("legendName")
+            card_layout.addWidget(name, 1)
+            kind = QLabel(detail)
+            kind.setObjectName("legendKind")
+            card_layout.addWidget(kind)
+            self.legend_list.setItemWidget(item, card)
+        if restored_row >= 0:
+            self.legend_list.setCurrentRow(restored_row)
         self.legend_list.blockSignals(False)
         self._legend_selected(self.legend_list.currentRow())
+
+    def _selected_legend_index(self) -> int | None:
+        item = self.legend_list.currentItem()
+        if item is None:
+            return None
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(index, int) and 0 <= index < len(self.spec.get("legend", [])):
+            return index
+        return None
 
     @staticmethod
     def _legend_style_name(style: str) -> str:
         return {"normal": "Etapa normal", "alt": "Etapa alternativa",
-                "manual": "Análise manual", "bad": "Encerrada", "frame": "Moldura"}.get(style, style)
+                "manual": "Análise manual", "bad": "Encerrada", "frame": "Moldura",
+                "decision": "Decisão"}.get(style, style)
 
     def _legend_icon(self, style: str) -> QIcon:
         palette = (LIGHT if self.spec.get("meta", {}).get("theme") == "light" else DARK)
@@ -1266,7 +1499,12 @@ class FlowEditorWindow(QMainWindow):
         image.fill(Qt.GlobalColor.transparent)
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if style == "frame":
+        if style == "decision":
+            painter.setPen(QPen(QColor("#a78bfa"), 1.3))
+            painter.setBrush(QColor("#251f3a"))
+            painter.drawPolygon(QPolygonF([QPointF(14, 2), QPointF(27, 11),
+                                           QPointF(14, 20), QPointF(1, 11)]))
+        elif style == "frame":
             pen = QPen(QColor(palette["frame"]), 1.5, Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -1326,9 +1564,24 @@ class FlowEditorWindow(QMainWindow):
         if self._loading_form:
             return
         self._record_action()
-        self.spec.setdefault("meta", {})["theme"] = self.theme_combo.currentData()
+        mode = self.theme_combo.currentData()
+        if mode == "system":
+            system_color = QApplication.palette().color(QPalette.ColorRole.Window)
+            theme = "dark" if system_color.lightness() < 128 else "light"
+        else:
+            theme = mode
+        meta = self.spec.setdefault("meta", {})
+        meta["theme_mode"] = mode
+        meta["theme"] = theme
+        for button_mode, button in self.theme_buttons.items():
+            button.setChecked(button_mode == mode)
         self._refresh_legend_list()
         self._changed(redraw=True)
+
+    def _theme_button_clicked(self, mode: str) -> None:
+        index = self.theme_combo.findData(mode)
+        if index >= 0 and index != self.theme_combo.currentIndex():
+            self.theme_combo.setCurrentIndex(index)
 
     def _default_changed(self, key: str, value: Any) -> None:
         if self._loading_form:
@@ -1471,6 +1724,7 @@ class FlowEditorWindow(QMainWindow):
         self.selected_node = node_id
         self.selected_edge = None
         self.view.select_node(node_id)
+        self.inspector_tabs.setCurrentIndex(1)
         self._refresh_inspector()
 
     def _node_moved(self, node_id: str, x: float, y: float) -> None:
@@ -1497,6 +1751,7 @@ class FlowEditorWindow(QMainWindow):
         self._set_edge_field()
         self._set_node_fields()
         self._loading_form = False
+        self.element_empty.setVisible(self.selected_node is None and self.selected_edge is None)
 
     def _edge_clicked(self, edge_index: int) -> None:
         if edge_index < 0 or edge_index >= len(self.spec["edges"]):
@@ -1505,6 +1760,7 @@ class FlowEditorWindow(QMainWindow):
         self.selected_node = None
         self.view.select_node(None)
         self._refresh_graph()
+        self.inspector_tabs.setCurrentIndex(1)
         self._refresh_inspector()
         self.edge_list.setCurrentRow(edge_index)
 
@@ -1810,38 +2066,76 @@ class FlowEditorWindow(QMainWindow):
             return
         self._record_action()
         self.spec.setdefault("legend", []).append([self.legend_style_combo.currentData(), text])
+        self._legend_new_item = False
         self._changed(redraw=True)
         self._refresh_inspector()
 
+    def _legend_add_clicked(self) -> None:
+        if self._legend_new_item:
+            self.add_legend()
+            return
+        self._legend_new_item = True
+        self.legend_list.setCurrentRow(-1)
+        self.legend_style_combo.setCurrentIndex(max(0, self.legend_style_combo.findData("normal")))
+        self.legend_text.clear()
+        self.legend_text.setEnabled(True)
+        self.legend_style_combo.setEnabled(True)
+        self.update_legend_button.setEnabled(False)
+        self.remove_legend_button.setEnabled(False)
+        self.legend_editor.show()
+        self.add_legend_button.setText("Salvar item")
+        self.legend_text.setFocus()
+
     def _legend_selected(self, row: int) -> None:
-        valid = 0 <= row < len(self.spec.get("legend", []))
-        self.legend_text.setEnabled(valid)
-        self.legend_style_combo.setEnabled(valid)
+        index = self._selected_legend_index()
+        valid = index is not None
+        for index in range(self.legend_list.count()):
+            card = self.legend_list.itemWidget(self.legend_list.item(index))
+            if card is not None:
+                card.setProperty("selected", index == row)
+                card.style().unpolish(card)
+                card.style().polish(card)
+        if valid:
+            self._legend_new_item = False
+            self.legend_editor.show()
+            self.add_legend_button.setText("＋  Novo item")
+            self.legend_text.setEnabled(True)
+            self.legend_style_combo.setEnabled(True)
+        elif self._legend_new_item:
+            self.legend_editor.show()
+            self.add_legend_button.setText("Salvar item")
+            self.legend_text.setEnabled(True)
+            self.legend_style_combo.setEnabled(True)
+        else:
+            self.legend_editor.hide()
+            self.add_legend_button.setText("＋  Adicionar item")
+            self.legend_text.setEnabled(False)
+            self.legend_style_combo.setEnabled(False)
         self.update_legend_button.setEnabled(valid)
         self.remove_legend_button.setEnabled(valid)
         if valid:
-            style, label = self.spec["legend"][row]
+            style, label = self.spec["legend"][index]
             self.legend_style_combo.setCurrentIndex(max(0, self.legend_style_combo.findData(style)))
             self.legend_text.setText(label)
-        elif hasattr(self, "legend_text"):
+        elif not self._legend_new_item:
             self.legend_text.clear()
 
     def update_legend(self) -> None:
-        row = self.legend_list.currentRow()
+        index = self._selected_legend_index()
         text = self.legend_text.text().strip()
-        if row < 0 or row >= len(self.spec.get("legend", [])) or not text:
+        if index is None or not text:
             return
         self._record_action()
-        self.spec["legend"][row] = [self.legend_style_combo.currentData(), text]
+        self.spec["legend"][index] = [self.legend_style_combo.currentData(), text]
         self._changed(redraw=True)
         self._refresh_inspector()
 
     def remove_legend(self) -> None:
-        row = self.legend_list.currentRow()
-        if row < 0:
+        index = self._selected_legend_index()
+        if index is None:
             return
         self._record_action()
-        self.spec["legend"].pop(row)
+        self.spec["legend"].pop(index)
         self._changed(redraw=True)
         self._refresh_inspector()
 
