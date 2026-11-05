@@ -25,45 +25,180 @@ from fluxograma import DARK, LIGHT
 
 
 APP_QSS = """
-QWidget { background: #101722; color: #e9f0f6; font-family: 'Segoe UI'; font-size: 10pt; }
-QLabel { background: transparent; border: 0; }
-QMainWindow, QWidget#root { background: #101722; }
-QFrame#topbar, QFrame#panel, QFrame#canvasHeader, QFrame#canvasToolbar {
-  background: #172333; border: 1px solid #27394d; border-radius: 12px;
+QWidget {
+  background: #0b1320;
+  color: #e8eef5;
+  font-family: "Segoe UI";
+  font-size: 10pt;
 }
-QLabel#brand { color: #66d6bd; font-size: 11pt; font-weight: 700; letter-spacing: 1px; }
-QLabel#pageTitle { color: #f5f8fb; font-size: 17pt; font-weight: 700; }
-QLabel#muted, QLabel#pathLabel { color: #a3b3c4; }
-QLabel#statusDirty { color: #e4bb68; font-weight: 600; }
-QLabel#statusSaved { color: #67d2b8; font-weight: 600; }
-QGroupBox { background: #172333; border: 1px solid #2a3d52; border-radius: 11px;
-  margin-top: 13px; padding: 13px 12px 11px; font-weight: 650; }
-QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; color: #9fb4c8; }
+QLabel { background: transparent; border: 0; }
+QMainWindow, QWidget#root { background: #0b1320; }
+
+QFrame#topbar, QFrame#panel, QFrame#canvasHeader, QFrame#canvasToolbar,
+QFrame#inspectorHeader {
+  background: #121e2d;
+  border: 1px solid #26394f;
+  border-radius: 14px;
+}
+QLabel#brand {
+  color: #71ddc8;
+  font-size: 10.5pt;
+  font-weight: 700;
+}
+QLabel#pageTitle {
+  color: #f3f6fa;
+  font-size: 18pt;
+  font-weight: 700;
+}
+QLabel#muted, QLabel#pathLabel { color: #9aadc1; }
+QLabel#statusDirty { color: #f3c779; font-weight: 650; }
+QLabel#statusSaved { color: #70d7be; font-weight: 650; }
+QLabel#inspectorTitle {
+  color: #f0f5fa;
+  font-size: 12pt;
+  font-weight: 700;
+}
+QLabel#inspectorHint, QLabel#sectionHint {
+  color: #879bb0;
+  font-size: 8.5pt;
+}
+
+QGroupBox {
+  background: #172537;
+  border: 1px solid #2b4058;
+  border-radius: 12px;
+  margin-top: 15px;
+  padding: 15px 13px 12px;
+  font-weight: 650;
+}
+QGroupBox::title {
+  subcontrol-origin: margin;
+  left: 13px;
+  padding: 0 7px;
+  color: #b2c3d4;
+  background: #172537;
+}
+QFormLayout QLabel { color: #a9bbcd; }
+
 QLineEdit, QPlainTextEdit, QComboBox, QListWidget {
-  background: #101a27; border: 1px solid #31475e; border-radius: 8px;
-  padding: 7px 9px; selection-background-color: #226f69; }
-QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QListWidget:focus { border: 1px solid #56bda9; }
-QComboBox::drop-down { border: 0; width: 24px; }
-QPushButton { background: #24364a; border: 1px solid #354c63; border-radius: 8px;
-  padding: 8px 12px; font-weight: 600; }
-QPushButton:hover { background: #2b4258; border-color: #52718b; }
-QPushButton:pressed { background: #192b3d; }
-QPushButton#primary { background: #168879; border-color: #31a694; color: white; }
-QPushButton#primary:hover { background: #1a9a87; }
-QPushButton#accent { color: #70ddc4; border-color: #3b766f; }
-QPushButton#danger { color: #ff9d9d; border-color: #75464d; }
-QPushButton:checked { background: #24584f; border-color: #61c9b3; color: #d8fff5; }
-QListWidget::item { padding: 7px 5px; border-radius: 5px; }
-QListWidget::item:selected { background: #244c50; color: #effffb; }
+  background: #0d1928;
+  color: #e8eef5;
+  border: 1px solid #30465e;
+  border-radius: 9px;
+  padding: 8px 10px;
+  selection-background-color: #176f68;
+  selection-color: #ffffff;
+}
+QLineEdit:hover, QPlainTextEdit:hover, QComboBox:hover, QListWidget:hover {
+  border-color: #405d78;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QListWidget:focus {
+  border: 1px solid #5bcbb7;
+  background: #101e2e;
+}
+QComboBox::drop-down { border: 0; width: 26px; }
+QComboBox QAbstractItemView {
+  background: #172537;
+  color: #edf3f8;
+  border: 1px solid #30465e;
+  selection-background-color: #245b59;
+  padding: 5px;
+}
+
+QPushButton {
+  background: #1d2d41;
+  color: #e7eef6;
+  border: 1px solid #354c65;
+  border-radius: 9px;
+  padding: 8px 13px;
+  min-height: 18px;
+  font-weight: 600;
+}
+QPushButton:hover {
+  background: #263a52;
+  border-color: #526d88;
+}
+QPushButton:pressed { background: #172638; }
+QPushButton:disabled {
+  background: #162333;
+  color: #607489;
+  border-color: #26384d;
+}
+QPushButton#primary {
+  background: #128d7b;
+  color: #ffffff;
+  border: 1px solid #31aa97;
+  font-weight: 700;
+}
+QPushButton#primary:hover { background: #17a18c; }
+QPushButton#accent {
+  color: #7be2ce;
+  background: #18333a;
+  border-color: #34766f;
+}
+QPushButton#accent:hover {
+  background: #20464a;
+  border-color: #55a99b;
+}
+QPushButton#danger {
+  color: #ffaaa9;
+  background: #38252d;
+  border-color: #70434f;
+}
+QPushButton#danger:hover { background: #4b2b35; }
+QPushButton:checked {
+  background: #20564f;
+  border-color: #62cdb8;
+  color: #e2fff8;
+}
+QPushButton#historyButton {
+  min-width: 38px;
+  padding: 7px 11px;
+  font-size: 11pt;
+}
+
+QListWidget::item {
+  padding: 9px 7px;
+  border-radius: 7px;
+}
+QListWidget::item:hover { background: #203247; }
+QListWidget::item:selected {
+  background: #214a4b;
+  color: #f1fffb;
+}
+
 QScrollArea { border: 0; background: transparent; }
-QScrollBar:vertical { background: #101722; width: 10px; margin: 0; }
-QScrollBar::handle:vertical { background: #34495d; min-height: 26px; border-radius: 5px; }
+QScrollBar:vertical {
+  background: #111d2b;
+  width: 9px;
+  margin: 2px 1px 2px 1px;
+}
+QScrollBar::handle:vertical {
+  background: #3a5068;
+  min-height: 30px;
+  border-radius: 4px;
+}
+QScrollBar::handle:vertical:hover { background: #58718b; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QGraphicsView { background: #0d141d; border: 1px solid #26394e; border-radius: 12px; }
-QSplitter::handle { background: #101722; width: 7px; }
-QStatusBar { background: #101722; color: #91a4b8; }
-QPushButton#historyButton { min-width: 38px; padding: 7px 9px; font-size: 12pt; }
-QLabel#sectionHint { color: #8298ad; font-size: 8.5pt; }
+
+QGraphicsView {
+  background: #0a121d;
+  border: 1px solid #26394f;
+  border-radius: 14px;
+}
+QSplitter::handle { background: #0b1320; width: 8px; }
+QStatusBar {
+  background: #0b1320;
+  color: #8fa4b9;
+  border-top: 1px solid #1e2d40;
+}
+QToolTip {
+  background: #1a2a3d;
+  color: #edf3f8;
+  border: 1px solid #405a74;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
 """
 
 
@@ -512,14 +647,14 @@ class FlowEditorWindow(QMainWindow):
         root = QWidget()
         root.setObjectName("root")
         outer = QVBoxLayout(root)
-        outer.setContentsMargins(18, 16, 18, 12)
-        outer.setSpacing(12)
+        outer.setContentsMargins(20, 18, 20, 14)
+        outer.setSpacing(14)
 
         topbar = QFrame()
         topbar.setObjectName("topbar")
         top = QHBoxLayout(topbar)
-        top.setContentsMargins(16, 10, 14, 10)
-        brand = QLabel("FLUXO STUDIO")
+        top.setContentsMargins(18, 11, 16, 11)
+        brand = QLabel("◈  FLUXO STUDIO")
         brand.setObjectName("brand")
         top.addWidget(brand)
         top.addSpacing(10)
@@ -660,18 +795,30 @@ class FlowEditorWindow(QMainWindow):
 
         panel = QFrame()
         panel.setObjectName("panel")
-        panel.setMinimumWidth(370)
-        panel.setMaximumWidth(450)
+        panel.setMinimumWidth(385)
+        panel.setMaximumWidth(470)
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(10, 10, 10, 10)
-        panel_layout.setSpacing(4)
+        panel_layout.setContentsMargins(12, 12, 12, 12)
+        panel_layout.setSpacing(10)
+        inspector_header = QFrame()
+        inspector_header.setObjectName("inspectorHeader")
+        inspector_header_layout = QVBoxLayout(inspector_header)
+        inspector_header_layout.setContentsMargins(14, 11, 14, 11)
+        inspector_header_layout.setSpacing(3)
+        inspector_title = QLabel("Propriedades")
+        inspector_title.setObjectName("inspectorTitle")
+        inspector_hint = QLabel("Configure o fluxo e os elementos selecionados")
+        inspector_hint.setObjectName("inspectorHint")
+        inspector_header_layout.addWidget(inspector_title)
+        inspector_header_layout.addWidget(inspector_hint)
+        panel_layout.addWidget(inspector_header)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         form_root = QWidget()
         forms = QVBoxLayout(form_root)
-        forms.setContentsMargins(5, 5, 5, 8)
-        forms.setSpacing(8)
+        forms.setContentsMargins(4, 4, 4, 10)
+        forms.setSpacing(10)
 
         self.meta_group = QGroupBox("Fluxograma")
         meta_form = QFormLayout(self.meta_group)
@@ -817,7 +964,7 @@ class FlowEditorWindow(QMainWindow):
         scroll.setWidget(form_root)
         panel_layout.addWidget(scroll)
         splitter.addWidget(panel)
-        splitter.setSizes([1010, 430])
+        splitter.setSizes([980, 450])
         outer.addWidget(splitter, 1)
         self.setCentralWidget(root)
         self.statusBar().showMessage("Arraste o fundo para mover a tela · arraste etapas para reposicionar · role para zoom", 7000)
