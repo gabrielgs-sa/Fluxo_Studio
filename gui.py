@@ -12,7 +12,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import (QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QIcon,
                            QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
                            QPolygonF, QShortcut)
-from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QFormLayout,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QFrame, QGraphicsItem, QGraphicsObject, QGraphicsPathItem,
                                QGraphicsPolygonItem,
                                QGraphicsScene, QGraphicsSimpleTextItem,
@@ -446,6 +446,10 @@ class DiagramView(QGraphicsView):
         for key, item in self._node_items.items():
             item.setSelected(key == node_id)
 
+    def select_nodes(self, node_ids: set[str]) -> None:
+        for key, item in self._node_items.items():
+            item.setSelected(key in node_ids)
+
     def fit_diagram(self) -> None:
         if not self.scene().sceneRect().isNull():
             self.fitInView(self.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -481,6 +485,9 @@ class FlowEditorWindow(QMainWindow):
         self.selected_edge: int | None = None
         self.connect_mode = False
         self.connect_source: str | None = None
+        self.merge_source_mode = False
+        self.merge_destination_mode = False
+        self.merge_sources: set[str] = set()
         self.dirty = False
         self._loading_form = False
         self.undo_stack: list[dict] = []
@@ -582,18 +589,54 @@ class FlowEditorWindow(QMainWindow):
 
         toolbar = QFrame()
         toolbar.setObjectName("canvasToolbar")
-        toolrow = QHBoxLayout(toolbar)
-        toolrow.setContentsMargins(10, 7, 10, 7)
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(10, 8, 10, 8)
+        toolbar_layout.setSpacing(6)
+        toolrow = QHBoxLayout()
+        toolrow.setSpacing(7)
+        toolbar_layout.addLayout(toolrow)
         add_button = QPushButton("+  Nova etapa")
         add_button.setObjectName("accent")
         add_button.clicked.connect(self.add_node)
         toolrow.addWidget(add_button)
+        decision_button = QPushButton("Nova decisão")
+        decision_button.setToolTip("Criar uma etapa de decisão em formato de losango")
+        decision_button.clicked.connect(self.add_decision)
+        toolrow.addWidget(decision_button)
+        route_label = QLabel("Saída:")
+        route_label.setObjectName("sectionHint")
+        toolrow.addWidget(route_label)
+        self.connection_label_combo = QComboBox()
+        self.connection_label_combo.addItem("Sem rótulo", "")
+        self.connection_label_combo.addItem("Sim", "Sim")
+        self.connection_label_combo.addItem("Não", "Não")
+        self.connection_label_combo.setToolTip("Rótulo a exibir na nova seta")
+        self.connection_label_combo.setMaximumWidth(120)
+        toolrow.addWidget(self.connection_label_combo)
         self.connect_button = QPushButton("Conectar etapas")
         self.connect_button.setObjectName("accent")
         self.connect_button.setCheckable(True)
+        self.connect_button.setToolTip(
+            "Clique numa origem e continue clicando em destinos. Em sequência, cada destino vira a próxima origem; use Esc para terminar.")
         self.connect_button.clicked.connect(self.toggle_connect_mode)
         toolrow.addWidget(self.connect_button)
+        self.keep_connection_source = QCheckBox("Manter origem")
+        self.keep_connection_source.setToolTip(
+            "Ativado: conecta vários destinos ao mesmo bloco. Desativado: cada destino vira a próxima origem.")
+        toolrow.addWidget(self.keep_connection_source)
+        self.merge_button = QPushButton("Unir caminhos")
+        self.merge_button.setCheckable(True)
+        self.merge_button.setToolTip(
+            "Selecione pelo menos duas origens. Depois escolha um bloco existente ou crie um destino novo.")
+        self.merge_button.clicked.connect(self._merge_button_clicked)
+        toolrow.addWidget(self.merge_button)
         toolrow.addStretch(1)
+        viewrow = QHBoxLayout()
+        viewrow.setSpacing(7)
+        gesture_hint = QLabel("Conexão em sequência: origem → destinos. Marque Manter origem para ramificar.")
+        gesture_hint.setObjectName("sectionHint")
+        viewrow.addWidget(gesture_hint)
+        viewrow.addStretch(1)
         zoom_out = QPushButton("-")
         zoom_out.setToolTip("Diminuir zoom")
         zoom_out.clicked.connect(lambda: self.view.zoom(1 / 1.15))
@@ -602,9 +645,10 @@ class FlowEditorWindow(QMainWindow):
         zoom_in.clicked.connect(lambda: self.view.zoom(1.15))
         fit = QPushButton("Ajustar à tela")
         fit.clicked.connect(lambda: self.view.fit_diagram())
-        toolrow.addWidget(zoom_out)
-        toolrow.addWidget(zoom_in)
-        toolrow.addWidget(fit)
+        viewrow.addWidget(zoom_out)
+        viewrow.addWidget(zoom_in)
+        viewrow.addWidget(fit)
+        toolbar_layout.addLayout(viewrow)
         left_layout.addWidget(toolbar)
 
         self.view = DiagramView(self.callbacks["build"])
@@ -780,7 +824,7 @@ class FlowEditorWindow(QMainWindow):
         for sequence, handler in (("Ctrl+Z", self.undo), ("Ctrl+Y", self.redo),
                                   ("Ctrl+Shift+Z", self.redo), ("Ctrl+S", self.save),
                                   ("Ctrl+O", self.open_flow), ("Ctrl+N", self.new_flow),
-                                  ("Ctrl+Shift+S", self.save_as)):
+                                  ("Ctrl+Shift+S", self.save_as), ("Esc", self.cancel_active_modes)):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
             shortcut.activated.connect(handler)
@@ -883,6 +927,7 @@ class FlowEditorWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Não foi possível abrir o fluxo", str(exc))
             return
+        self.cancel_active_modes()
         self.path = path
         self.is_example = is_example or self._same_path(path, self.example_path)
         self.spec = new_spec
@@ -909,6 +954,7 @@ class FlowEditorWindow(QMainWindow):
     def new_flow(self) -> None:
         if not self._confirm_switch():
             return
+        self.cancel_active_modes()
         self.path = None
         self.is_example = False
         self.spec = self.callbacks["blank_spec"]()
@@ -1183,28 +1229,75 @@ class FlowEditorWindow(QMainWindow):
             self._refresh_graph()
 
     def _node_clicked(self, node_id: str) -> None:
+        if self.merge_source_mode:
+            if node_id in self.merge_sources:
+                self.merge_sources.remove(node_id)
+            else:
+                self.merge_sources.add(node_id)
+            self.selected_node = None
+            self.selected_edge = None
+            self.view.select_nodes(self.merge_sources)
+            self.merge_button.setText(
+                f"Selecionar destino ({len(self.merge_sources)})" if len(self.merge_sources) >= 2
+                else f"Selecionar origens ({len(self.merge_sources)})")
+            self.statusBar().showMessage(
+                f"{len(self.merge_sources)} origem(ns) selecionada(s). Selecione mais blocos; com duas ou mais, "
+                "clique em 'Selecionar destino' para escolher onde os caminhos se encontram.")
+            return
+        if self.merge_destination_mode:
+            if node_id in self.merge_sources:
+                self.statusBar().showMessage("O destino precisa ser diferente dos blocos de origem.", 3500)
+                return
+            self._connect_merge_to_existing_node(node_id)
+            return
         if self.connect_mode:
             if self.connect_source is None:
                 self.connect_source = node_id
                 self.selected_node = node_id
+                self.selected_edge = None
                 self.view.select_node(node_id)
-                self.statusBar().showMessage(f"Origem: {node_id}. Agora clique na etapa de destino.")
+                self._refresh_inspector()
+                self.statusBar().showMessage(
+                    f"Origem: {node_id}. Clique nos destinos em sequência; pressione Esc para encerrar.")
                 return
             src = self.connect_source
-            self.connect_source = None
-            self.connect_button.setChecked(False)
-            self.connect_mode = False
-            self.view.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+            if src == node_id:
+                self.statusBar().showMessage("Escolha um destino diferente da origem.", 3500)
+                return
+            label = self.connection_label_combo.currentData()
+            duplicate = any(edge.get("src") == src and edge.get("dst") == node_id
+                            and edge.get("label", "") == label for edge in self.spec["edges"])
+            if duplicate:
+                self.statusBar().showMessage("Essa conexão já existe com o mesmo rótulo.", 3500)
+                return
             self._record_action()
             edge = {"src": src, "dst": node_id}
+            if label:
+                edge["label"] = label
             if self.spec.get("meta", {}).get("default_edge_dashed"):
                 edge["dashed"] = True
             self.spec["edges"].append(edge)
-            self.selected_node = None
-            self.selected_edge = len(self.spec["edges"]) - 1
+            source_spec = next((item for item in self.spec["nodes"] if item.get("id") == src), {})
+            decision_output = source_spec.get("shape") == "diamond" and label in ("Sim", "Não")
+            keep_source = self.keep_connection_source.isChecked() or decision_output
+            next_source = src if keep_source else node_id
+            if decision_output and label == "Sim":
+                self.connection_label_combo.setCurrentIndex(self.connection_label_combo.findData("Não"))
+            elif label:
+                self.connection_label_combo.setCurrentIndex(0)
+            self.connect_source = next_source
+            self.selected_node = next_source
+            self.selected_edge = None
             self._changed(redraw=True)
             self._refresh_inspector()
-            self.statusBar().showMessage(f"Seta criada: {src} → {node_id}", 3500)
+            self.connect_button.setText("Finalizar conexões")
+            if decision_output and label == "Sim":
+                next_hint = "Saída ajustada para Não; selecione o destino dessa ramificação."
+            elif keep_source:
+                next_hint = "Selecione outro destino para esta origem."
+            else:
+                next_hint = f"Próxima origem: {node_id}. Selecione o próximo destino."
+            self.statusBar().showMessage(f"Conexão criada: {src} → {node_id}. {next_hint} Pressione Esc ou finalize.", 5000)
             return
         self.selected_node = node_id
         self.selected_edge = None
@@ -1247,24 +1340,174 @@ class FlowEditorWindow(QMainWindow):
         self.edge_list.setCurrentRow(edge_index)
 
     def toggle_connect_mode(self, enabled: bool) -> None:
+        if enabled and (self.merge_source_mode or self.merge_destination_mode):
+            self._cancel_merge_mode()
         self.connect_mode = enabled
         self.connect_source = None
+        if enabled and self.selected_node and self.selected_edge is None:
+            self.connect_source = self.selected_node
         self.view.viewport().setCursor(Qt.CursorShape.CrossCursor if enabled else Qt.CursorShape.ArrowCursor)
-        self.connect_button.setText("Cancelar conexão" if enabled else "Conectar etapas")
-        self.statusBar().showMessage("Clique na etapa de origem e depois na etapa de destino." if enabled
-                                     else "Modo de conexão encerrado", 5000)
+        self.connect_button.setText("Finalizar conexões" if enabled else "Conectar etapas")
+        if enabled and self.connect_source:
+            label = self.connection_label_combo.currentData()
+            suffix = f" com rótulo '{label}'." if label else "."
+            self.statusBar().showMessage(
+                f"Origem: {self.connect_source}. Clique no destino; depois continue conectando" + suffix, 5000)
+        else:
+            self.statusBar().showMessage("Clique numa origem e depois selecione os destinos em sequência." if enabled
+                                         else "Modo de conexão encerrado", 5000)
+
+    def cancel_active_modes(self) -> None:
+        if self.connect_mode:
+            self.connect_button.blockSignals(True)
+            self.connect_button.setChecked(False)
+            self.connect_button.blockSignals(False)
+            self.toggle_connect_mode(False)
+        if self.merge_source_mode or self.merge_destination_mode:
+            self._cancel_merge_mode()
+
+    def _merge_button_clicked(self, checked: bool) -> None:
+        if checked:
+            if self.merge_destination_mode:
+                return
+            if self.connect_mode:
+                self.connect_button.blockSignals(True)
+                self.connect_button.setChecked(False)
+                self.connect_button.blockSignals(False)
+                self.connect_button.setText("Conectar etapas")
+                self.connect_mode = False
+                self.connect_source = None
+            self.merge_source_mode = True
+            self.merge_sources.clear()
+            self.selected_node = None
+            self.selected_edge = None
+            self.view.select_nodes(set())
+            self._refresh_inspector()
+            self.merge_button.setText("Selecionar origens (0)")
+            self.view.viewport().setCursor(Qt.CursorShape.CrossCursor)
+            self.statusBar().showMessage(
+                "Clique em pelo menos dois blocos de origem. Depois escolha um destino comum.", 7000)
+            return
+
+        if self.merge_destination_mode:
+            self._cancel_merge_mode()
+            self.statusBar().showMessage("Junção cancelada.", 3000)
+            return
+        if not self.merge_source_mode:
+            return
+        if len(self.merge_sources) < 2:
+            self._cancel_merge_mode()
+            self.statusBar().showMessage("A junção precisa de pelo menos dois blocos de origem.", 4000)
+            return
+        self.merge_source_mode = False
+        self.merge_destination_mode = True
+        self.merge_button.blockSignals(True)
+        self.merge_button.setChecked(True)
+        self.merge_button.setText("Cancelar união")
+        self.merge_button.blockSignals(False)
+        self.statusBar().showMessage(
+            "Clique no bloco que receberá os caminhos ou em '+ Nova etapa' para criar um destino novo. Esc cancela.", 7000)
+
+    def _cancel_merge_mode(self) -> None:
+        self.merge_source_mode = False
+        self.merge_destination_mode = False
+        self.merge_sources.clear()
+        if hasattr(self, "merge_button"):
+            self.merge_button.blockSignals(True)
+            self.merge_button.setChecked(False)
+            self.merge_button.setText("Unir caminhos")
+            self.merge_button.blockSignals(False)
+        if hasattr(self, "view"):
+            self.view.select_nodes(set())
+            self.view.viewport().unsetCursor()
+
+    def _connect_merge_to_existing_node(self, target_id: str) -> None:
+        sources = sorted(self.merge_sources)
+        missing = [source_id for source_id in sources
+                   if not any(edge.get("src") == source_id and edge.get("dst") == target_id
+                              for edge in self.spec["edges"])]
+        if not missing:
+            self._cancel_merge_mode()
+            self.statusBar().showMessage("Todos os caminhos selecionados já chegam a esse bloco.", 4000)
+            return
+        self._record_action()
+        for source_id in missing:
+            edge = {"src": source_id, "dst": target_id}
+            if self.spec.get("meta", {}).get("default_edge_dashed"):
+                edge["dashed"] = True
+            self.spec["edges"].append(edge)
+        self._cancel_merge_mode()
+        self.selected_node = target_id
+        self.selected_edge = None
+        self._changed(redraw=True)
+        self._refresh_inspector()
+        self.statusBar().showMessage(f"{len(missing)} caminho(s) conectado(s) ao bloco '{target_id}'.", 5000)
+
+    def _create_merge_node(self) -> None:
+        sources = sorted(self.merge_sources)
+        source_items = [self.view._node_items[node_id] for node_id in sources
+                        if node_id in self.view._node_items]
+        if len(sources) < 2 or len(source_items) != len(sources):
+            self._cancel_merge_mode()
+            return
+
+        self._record_action()
+        existing_ids = {node.get("id") for node in self.spec["nodes"]}
+        count = 1
+        while f"uniao_{count}" in existing_ids:
+            count += 1
+        node_id = f"uniao_{count}"
+        width, height = 250.0, 78.0
+        center_x = sum(item.pos().x() + item.node.w / 2 for item in source_items) / len(source_items)
+        top_y = max(item.pos().y() + item.node.h for item in source_items) + 80
+        proposed = QRectF(center_x - width / 2, top_y, width, height)
+        occupied = [QRectF(item.pos().x() - 22, item.pos().y() - 22,
+                           item.node.w + 44, item.node.h + 44)
+                    for item in self.view._node_items.values()]
+        while any(proposed.intersects(rect) for rect in occupied):
+            proposed.translate(0, height + 34)
+
+        node = {"id": node_id, "title": "Caminho unificado",
+                "sub": "Continuação do fluxo", "shape": "box", "style": "normal",
+                "cx": round(center_x, 1), "y": round(proposed.top(), 1)}
+        self.spec["nodes"].append(node)
+        for source_id in sources:
+            edge = {"src": source_id, "dst": node_id}
+            if self.spec.get("meta", {}).get("default_edge_dashed"):
+                edge["dashed"] = True
+            self.spec["edges"].append(edge)
+
+        self._cancel_merge_mode()
+        self.selected_node = node_id
+        self.selected_edge = None
+        self._changed(redraw=True)
+        self._refresh_inspector()
+        self.view.ensureVisible(self.view._node_items[node_id], 70, 70)
+        self.statusBar().showMessage(
+            f"{len(sources)} caminhos unidos em '{node['title']}'. Edite o bloco para definir a próxima etapa.", 6500)
 
     def add_node(self) -> None:
+        if self.merge_destination_mode:
+            self._create_merge_node()
+            return
+        self._add_graph_node("Nova etapa", "", "box", "etapa")
+
+    def add_decision(self) -> None:
+        self._add_graph_node("Nova decisão", "Defina a condição", "diamond", "decisao")
+
+    def _add_graph_node(self, title: str, sub: str, shape: str, id_prefix: str) -> None:
         self._record_action()
         ids = {node.get("id") for node in self.spec["nodes"]}
         count = 1
-        while f"etapa_{count}" in ids:
+        while f"{id_prefix}_{count}" in ids:
             count += 1
-        node: dict[str, Any] = {"id": f"etapa_{count}", "title": "Nova etapa", "sub": ""}
-        node["shape"] = self.spec.get("meta", {}).get("default_shape", "box")
+        node: dict[str, Any] = {"id": f"{id_prefix}_{count}", "title": title, "sub": sub}
+        node["shape"] = shape if shape == "diamond" else self.spec.get("meta", {}).get("default_shape", "box")
         node["style"] = self.spec.get("meta", {}).get("default_style", "normal")
         if self.spec["nodes"]:
-            node.update(below=self.spec["nodes"][-1]["id"], gap=55)
+            anchor = next((item for item in self.spec["nodes"]
+                           if item.get("id") == self.selected_node), self.spec["nodes"][-1])
+            node.update(below=anchor["id"], gap=65 if shape == "diamond" else 55)
         else:
             node.update(cx=400, y=100)
         self.spec["nodes"].append(node)
@@ -1272,7 +1515,9 @@ class FlowEditorWindow(QMainWindow):
         self.selected_edge = None
         self._changed(redraw=True)
         self._refresh_inspector()
-        self.statusBar().showMessage("Etapa criada. Arraste-a no diagrama para escolher a posição.", 4500)
+        message = ("Decisão criada. Selecione Sim ou Não em Saída e conecte cada resultado."
+                   if shape == "diamond" else "Etapa criada. Arraste-a no diagrama para escolher a posição.")
+        self.statusBar().showMessage(message, 5000)
 
     def delete_selected_node(self) -> None:
         if not self.selected_node:

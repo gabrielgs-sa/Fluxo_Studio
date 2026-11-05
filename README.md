@@ -22,6 +22,8 @@ Use o programa para planejar jornadas, documentar processos, apresentar etapas d
 - Edição visual de etapas, conexões, estilos, rótulos e legendas.
 - Organização das etapas por arraste, zoom com a roda do mouse e navegação arrastando o fundo do canvas.
 - Conexões com direção, pontos de origem e destino ajustáveis, rótulos e traçado contínuo ou tracejado.
+- Blocos de decisão com caminhos “Sim” e “Não”, além de criação de um destino comum para unir caminhos convergentes.
+- Conexão contínua em sequência ou com a mesma origem para vários destinos.
 - Formas de etapa retangulares, cápsulas e losangos, com estilos para etapas normais, alternativas, manuais e encerradas.
 - Histórico para desfazer e refazer alterações.
 - Salvamento dos projetos em JSON e exportação de diagramas em PDF ou SVG.
@@ -94,7 +96,9 @@ Sem `-o`, o comando gera um PDF com o mesmo nome do arquivo JSON. O tema pode se
 | Mover uma etapa | Arraste a etapa para a posição desejada. |
 | Navegar pelo diagrama | Arraste uma área vazia do canvas. |
 | Aproximar ou afastar | Role a roda do mouse sobre a área que deseja inspecionar. Os botões `+`, `-` e **Ajustar à tela** também controlam a visualização. |
-| Criar uma conexão | Ative **Conectar etapas**, selecione a etapa de origem e depois a de destino. |
+| Criar uma decisão | Use **Nova decisão** para inserir um losango. Escolha **Sim** ou **Não** em **Saída** e conecte o destino correspondente. Após criar a saída Sim, o seletor avança para Não automaticamente. A origem da decisão é mantida para facilitar a criação das duas saídas. |
+| Conectar várias etapas | Ative **Conectar etapas**. Se nenhuma etapa estiver selecionada, clique numa origem; depois continue clicando nos destinos. Por padrão, cada destino vira a próxima origem, criando uma sequência contínua. Marque **Manter origem** para criar várias setas a partir da mesma etapa. Encerre com Escape ou **Finalizar conexões**. |
+| Unir caminhos convergentes | Ative **Unir caminhos** e clique em pelo menos duas origens. Quando o botão indicar **Selecionar destino**, clique nele e escolha um bloco existente para receber as setas. Para criar um bloco novo de convergência, clique em **+ Nova etapa**. Pressione Escape ou **Cancelar união** para sair sem alterar o fluxo. |
 | Editar uma conexão | Selecione a seta no diagrama ou na lista **Setas**. Altere o rótulo, a origem, o destino e o traçado; também é possível inverter a direção. |
 | Alterar o visual | Selecione uma etapa para ajustar forma e estilo. Em **Padrões visuais**, escolha o padrão das novas etapas e setas ou aplique-o ao fluxograma inteiro. |
 | Editar a legenda | Selecione um item para atualizar seu símbolo ou significado; também é possível adicionar e remover itens. |
