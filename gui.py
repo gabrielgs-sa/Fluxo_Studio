@@ -417,10 +417,48 @@ class NodeItem(QGraphicsObject):
         self._press_pos = None
 
 
+class BranchLabelItem(QGraphicsObject):
+    clicked = Signal(str, str)
+
+    def __init__(self, node_id: str, label: str, color: str, background: str):
+        super().__init__()
+        self.node_id = node_id
+        self.label = label
+        self.color = QColor(color)
+        self.background = QColor(background)
+        self.rect = QRectF(0, 0, 42, 22)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setZValue(8)
+        self.setToolTip(f"Saída {label}: clique e escolha uma etapa de destino")
+
+    def boundingRect(self) -> QRectF:
+        return self.rect
+
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        del option, widget
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(self.color, 1.0))
+        painter.setBrush(QBrush(self.background))
+        painter.drawRoundedRect(self.rect, 7, 7)
+        painter.setPen(self.color)
+        painter.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        painter.drawText(self.rect, Qt.AlignmentFlag.AlignCenter, self.label)
+
+    def mousePressEvent(self, event) -> None:
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self.rect.contains(event.pos()) and event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.node_id, self.label)
+        event.accept()
+
+
 class DiagramView(QGraphicsView):
     nodeClicked = Signal(str)
     nodeMoved = Signal(str, float, float)
     edgeClicked = Signal(int)
+    branchClicked = Signal(str, str)
 
     def __init__(self, build_fn: Callable[[dict], Any], parent=None):
         super().__init__(parent)
@@ -429,6 +467,7 @@ class DiagramView(QGraphicsView):
         self._palette = DARK
         self._panning = False
         self._pan_last = QPointF()
+        self._edge_click_pending = False
         scene = QGraphicsScene(self)
         self.setScene(scene)
         scene.selectionChanged.connect(self._scene_selection_changed)
@@ -570,11 +609,45 @@ class DiagramView(QGraphicsView):
                                             by + wing * math.cos(angle))])
                 arrow_heads.append((points, route_color))
 
+        # Open Sim/Não outputs stay visible until the user chooses a destination.
+        branch_ports: list[tuple[str, str, float, float, str]] = []
+        connected_outputs: dict[str, set[str]] = {}
+        for edge in chart.edges:
+            label_value = str(edge.get("label", "")).strip().casefold()
+            if label_value in ("sim", "não"):
+                connected_outputs.setdefault(edge.get("src", ""), set()).add(label_value)
+        for node in chart.nodes.values():
+            if node.shape != "diamond":
+                continue
+            turn_y = node.cy + max(50, node.h * 1.3)
+            end_y = turn_y + 44
+            inset = min(48, node.w * 0.2)
+            for label, side, color in (("Sim", "left", "#2DD4BF"),
+                                       ("Não", "right", "#FB7185")):
+                if label.casefold() in connected_outputs.get(node.id, set()):
+                    continue
+                start_x = node.left if side == "left" else node.right
+                turn_x = start_x + inset if side == "left" else start_x - inset
+                route = [(start_x, node.cy), (start_x, turn_y),
+                         (turn_x, turn_y), (turn_x, end_y)]
+                path = QPainterPath(QPointF(*route[0]))
+                for point in route[1:]:
+                    path.lineTo(QPointF(*point))
+                pen = QPen(QColor(color), 1.8)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                stub = QGraphicsPathItem(path)
+                stub.setPen(pen)
+                stub.setZValue(-0.8)
+                scene.addItem(stub)
+                label_x = (start_x + turn_x) / 2 - 21
+                branch_ports.append((node.id, label, label_x, turn_y - 11, color))
+
         # Nodes
         for node in chart.nodes.values():
             item = NodeItem(node, self._palette)
-            item.clicked.connect(self.nodeClicked.emit)
-            item.moved.connect(self.nodeMoved.emit)
+            item.clicked.connect(self._queue_node_click)
+            item.moved.connect(self._queue_node_move)
             item.setSelected(node.id == selected_node)
             self._node_items[node.id] = item
             scene.addItem(item)
@@ -620,6 +693,12 @@ class DiagramView(QGraphicsView):
             label.setPos(x_pos, y_pos)
             label.setZValue(7)
             scene.addItem(label)
+
+        for node_id, label_text, x_pos, y_pos, color in branch_ports:
+            port = BranchLabelItem(node_id, label_text, color, self._palette["background"])
+            port.setPos(x_pos, y_pos)
+            port.clicked.connect(self.branchClicked.emit)
+            scene.addItem(port)
 
         # Diagram legend
         if chart.legend_items:
@@ -685,8 +764,21 @@ class DiagramView(QGraphicsView):
     def _scene_selection_changed(self) -> None:
         for item in self.scene().selectedItems():
             if item.data(0) == "diagram-edge":
-                self.edgeClicked.emit(int(item.data(1)))
+                if not self._edge_click_pending:
+                    self._edge_click_pending = True
+                    edge_index = int(item.data(1))
+                    QTimer.singleShot(0, lambda index=edge_index: self._emit_edge_click(index))
                 return
+
+    def _queue_node_click(self, node_id: str) -> None:
+        QTimer.singleShot(0, lambda value=node_id: self.nodeClicked.emit(value))
+
+    def _queue_node_move(self, node_id: str, x: float, y: float) -> None:
+        QTimer.singleShot(0, lambda value=node_id, px=x, py=y: self.nodeMoved.emit(value, px, py))
+
+    def _emit_edge_click(self, edge_index: int) -> None:
+        self._edge_click_pending = False
+        self.edgeClicked.emit(edge_index)
 
     def select_node(self, node_id: str | None) -> None:
         for key, item in self._node_items.items():
@@ -731,6 +823,7 @@ class FlowEditorWindow(QMainWindow):
         self.selected_edge: int | None = None
         self.connect_mode = False
         self.connect_source: str | None = None
+        self.selecting_connection_source = False
         self.merge_source_mode = False
         self.merge_destination_mode = False
         self.merge_sources: set[str] = set()
@@ -847,7 +940,7 @@ class FlowEditorWindow(QMainWindow):
         toolrow.addWidget(add_button)
         decision_button = QPushButton("Sim / Não")
         decision_button.setToolTip(
-            "Criar uma condição com os caminhos Sim e Não já visíveis no fluxograma.")
+            "Criar uma condição e ligar as saídas Sim/Não a qualquer etapa escolhida.")
         decision_button.clicked.connect(self.add_decision)
         toolrow.addWidget(decision_button)
         route_label = QLabel("Saída:")
@@ -858,19 +951,31 @@ class FlowEditorWindow(QMainWindow):
         self.connection_label_combo.addItem("Sim", "Sim")
         self.connection_label_combo.addItem("Não", "Não")
         self.connection_label_combo.setToolTip(
-            "Rótulo para conexões criadas manualmente. Use Sim / Não para criar os dois caminhos de uma vez.")
+            "Rótulo da próxima seta. Em decisões, escolha Sim ou Não e selecione livremente o destino.")
         self.connection_label_combo.setMaximumWidth(120)
         toolrow.addWidget(self.connection_label_combo)
+        self.connection_dashed_combo = QComboBox()
+        self.connection_dashed_combo.addItem("Contínua", False)
+        self.connection_dashed_combo.addItem("Tracejada", True)
+        self.connection_dashed_combo.setMaximumWidth(125)
+        self.connection_dashed_combo.setToolTip(
+            "Sem seta selecionada: define a próxima. Com seta selecionada: altera o traçado dela.")
         self.connect_button = QPushButton("Conectar etapas")
         self.connect_button.setObjectName("accent")
         self.connect_button.setCheckable(True)
         self.connect_button.setToolTip(
-            "Clique numa origem e continue clicando em destinos. Em sequência, cada destino vira a próxima origem; use Esc para terminar.")
+            "Escolha uma origem e clique em qualquer destino, inclusive uma etapa anterior. Use Esc para terminar.")
         self.connect_button.clicked.connect(self.toggle_connect_mode)
         toolrow.addWidget(self.connect_button)
+        self.change_source_button = QPushButton("Trocar origem")
+        self.change_source_button.setToolTip(
+            "Escolha outra etapa como origem para criar uma conexão independente ou de retorno.")
+        self.change_source_button.clicked.connect(self.choose_connection_source)
+        self.change_source_button.setVisible(False)
+        toolrow.addWidget(self.change_source_button)
         self.keep_connection_source = QCheckBox("Manter origem")
         self.keep_connection_source.setToolTip(
-            "Ativado: conecta vários destinos ao mesmo bloco. Desativado: cada destino vira a próxima origem.")
+            "Ativado: conecta vários destinos a esta origem. Desativado: o último destino vira a próxima origem.")
         toolrow.addWidget(self.keep_connection_source)
         self.merge_button = QPushButton("Unir caminhos")
         self.merge_button.setCheckable(True)
@@ -881,9 +986,14 @@ class FlowEditorWindow(QMainWindow):
         toolrow.addStretch(1)
         viewrow = QHBoxLayout()
         viewrow.setSpacing(7)
-        gesture_hint = QLabel("Conexão em sequência: origem → destinos. Marque Manter origem para ramificar.")
+        gesture_hint = QLabel(
+            "Escolha qualquer origem e destino; conexões podem voltar no fluxo.")
         gesture_hint.setObjectName("sectionHint")
         viewrow.addWidget(gesture_hint)
+        line_style_label = QLabel("Linha:")
+        line_style_label.setObjectName("sectionHint")
+        viewrow.addWidget(line_style_label)
+        viewrow.addWidget(self.connection_dashed_combo)
         viewrow.addStretch(1)
         zoom_out = QPushButton("-")
         zoom_out.setToolTip("Diminuir zoom")
@@ -903,6 +1013,7 @@ class FlowEditorWindow(QMainWindow):
         self.view.nodeClicked.connect(self._node_clicked)
         self.view.nodeMoved.connect(self._node_moved)
         self.view.edgeClicked.connect(self._edge_clicked)
+        self.view.branchClicked.connect(self._branch_output_clicked)
         left_layout.addWidget(self.view, 1)
         splitter.addWidget(left)
 
@@ -1190,6 +1301,7 @@ class FlowEditorWindow(QMainWindow):
         self.default_shape_combo.currentIndexChanged.connect(lambda _: self._default_changed("default_shape", self.default_shape_combo.currentData()))
         self.default_style_combo.currentIndexChanged.connect(lambda _: self._default_changed("default_style", self.default_style_combo.currentData()))
         self.default_edge_combo.currentIndexChanged.connect(lambda _: self._default_changed("default_edge_dashed", self.default_edge_combo.currentData()))
+        self.connection_dashed_combo.currentIndexChanged.connect(self._connection_style_changed)
         self.node_title.textEdited.connect(lambda value: self._node_changed("title", value))
         self.node_title.editingFinished.connect(self._finish_edit_session)
         self.node_sub.textChanged.connect(lambda: self._node_changed("sub", self.node_sub.toPlainText()))
@@ -1221,6 +1333,7 @@ class FlowEditorWindow(QMainWindow):
             meta.get("default_style", "normal"))))
         self.default_edge_combo.setCurrentIndex(max(0, self.default_edge_combo.findData(
             meta.get("default_edge_dashed", False))))
+        self._set_connection_style_ui(meta.get("default_edge_dashed", False))
         self._refresh_edge_list()
         self._refresh_legend_list()
         self._set_node_fields()
@@ -1430,6 +1543,8 @@ class FlowEditorWindow(QMainWindow):
         self.edge_into_combo.setCurrentIndex(max(0, self.edge_into_combo.findData(edge.get("into") if edge else None)))
         self.edge_dashed_combo.setCurrentIndex(max(0, self.edge_dashed_combo.findData(
             edge.get("dashed", False) if edge else False)))
+        if edge is not None:
+            self._set_connection_style_ui(edge.get("dashed", False))
 
     def _refresh_legend_list(self) -> None:
         current_item = self.legend_list.currentItem()
@@ -1588,7 +1703,37 @@ class FlowEditorWindow(QMainWindow):
             return
         self._record_action()
         self.spec.setdefault("meta", {})[key] = value
+        if key == "default_edge_dashed" and self.selected_edge is None:
+            self._set_connection_style_ui(bool(value))
         self._changed()
+
+    def _set_connection_style_ui(self, dashed: bool) -> None:
+        index = self.connection_dashed_combo.findData(bool(dashed))
+        if index < 0 or index == self.connection_dashed_combo.currentIndex():
+            return
+        self.connection_dashed_combo.blockSignals(True)
+        self.connection_dashed_combo.setCurrentIndex(index)
+        self.connection_dashed_combo.blockSignals(False)
+
+    def _connection_style_changed(self, _index: int) -> None:
+        if self._loading_form or self.selected_edge is None:
+            return
+        if self.selected_edge < 0 or self.selected_edge >= len(self.spec["edges"]):
+            return
+        edge = self.spec["edges"][self.selected_edge]
+        dashed = bool(self.connection_dashed_combo.currentData())
+        if bool(edge.get("dashed", False)) == dashed:
+            return
+        self._record_action()
+        if dashed:
+            edge["dashed"] = True
+        else:
+            edge.pop("dashed", None)
+        self.edge_dashed_combo.blockSignals(True)
+        self.edge_dashed_combo.setCurrentIndex(max(0, self.edge_dashed_combo.findData(dashed)))
+        self.edge_dashed_combo.blockSignals(False)
+        self._changed(redraw=True)
+        self.statusBar().showMessage("Traçado da seta selecionada atualizado.", 3500)
 
     def _node_changed(self, key: str, value: Any) -> None:
         if self._loading_form or not self.selected_node:
@@ -1629,6 +1774,8 @@ class FlowEditorWindow(QMainWindow):
             edge.pop(key, None)
         else:
             edge[key] = value
+        if key == "dashed":
+            self._set_connection_style_ui(bool(value))
         self._changed(redraw=True)
 
     def _changed(self, redraw: bool = False, refresh_edges: bool = False) -> None:
@@ -1641,6 +1788,23 @@ class FlowEditorWindow(QMainWindow):
             self._loading_form = False
         if redraw:
             self._refresh_graph()
+
+    def _branch_output_clicked(self, node_id: str, label: str) -> None:
+        if not any(node.get("id") == node_id for node in self.spec.get("nodes", [])):
+            return
+        self.cancel_active_modes()
+        self.selected_node = node_id
+        self.selected_edge = None
+        self.view.select_node(node_id)
+        self.connection_label_combo.setCurrentIndex(self.connection_label_combo.findData(label))
+        self.connect_button.blockSignals(True)
+        self.connect_button.setChecked(True)
+        self.connect_button.blockSignals(False)
+        self.toggle_connect_mode(True)
+        self.inspector_tabs.setCurrentIndex(1)
+        self._refresh_inspector()
+        self.statusBar().showMessage(
+            f"Saída {label} selecionada. Clique em qualquer etapa para definir o destino.", 6000)
 
     def _node_clicked(self, node_id: str) -> None:
         if self.merge_source_mode:
@@ -1665,14 +1829,15 @@ class FlowEditorWindow(QMainWindow):
             self._connect_merge_to_existing_node(node_id)
             return
         if self.connect_mode:
-            if self.connect_source is None:
+            if self.selecting_connection_source or self.connect_source is None:
                 self.connect_source = node_id
+                self.selecting_connection_source = False
                 self.selected_node = node_id
                 self.selected_edge = None
                 self.view.select_node(node_id)
                 self._refresh_inspector()
                 self.statusBar().showMessage(
-                    f"Origem: {node_id}. Clique nos destinos em sequência; pressione Esc para encerrar.")
+                    f"Origem definida: {node_id}. Clique em qualquer etapa para escolher o destino.")
                 return
             src = self.connect_source
             if src == node_id:
@@ -1688,7 +1853,7 @@ class FlowEditorWindow(QMainWindow):
             edge = {"src": src, "dst": node_id}
             if label:
                 edge["label"] = label
-            if self.spec.get("meta", {}).get("default_edge_dashed"):
+            if self.connection_dashed_combo.currentData():
                 edge["dashed"] = True
             self.spec["edges"].append(edge)
             source_spec = next((item for item in self.spec["nodes"] if item.get("id") == src), {})
@@ -1769,6 +1934,8 @@ class FlowEditorWindow(QMainWindow):
             self._cancel_merge_mode()
         self.connect_mode = enabled
         self.connect_source = None
+        self.selecting_connection_source = False
+        self.change_source_button.setVisible(enabled)
         if enabled and self.selected_node and self.selected_edge is None:
             self.connect_source = self.selected_node
         self.view.viewport().setCursor(Qt.CursorShape.CrossCursor if enabled else Qt.CursorShape.ArrowCursor)
@@ -1777,10 +1944,26 @@ class FlowEditorWindow(QMainWindow):
             label = self.connection_label_combo.currentData()
             suffix = f" com rótulo '{label}'." if label else "."
             self.statusBar().showMessage(
-                f"Origem: {self.connect_source}. Clique no destino; depois continue conectando" + suffix, 5000)
+                f"Origem: {self.connect_source}. Clique em qualquer destino do fluxo" + suffix, 5000)
         else:
-            self.statusBar().showMessage("Clique numa origem e depois selecione os destinos em sequência." if enabled
-                                         else "Modo de conexão encerrado", 5000)
+            self.statusBar().showMessage(
+                "Clique numa origem e depois em qualquer destino, inclusive uma etapa anterior."
+                if enabled else "Modo de conexão encerrado", 5000)
+
+    def choose_connection_source(self) -> None:
+        if not self.connect_mode:
+            self.connect_button.blockSignals(True)
+            self.connect_button.setChecked(True)
+            self.connect_button.blockSignals(False)
+            self.toggle_connect_mode(True)
+        self.connect_source = None
+        self.selecting_connection_source = True
+        self.selected_node = None
+        self.selected_edge = None
+        self.view.select_node(None)
+        self._refresh_inspector()
+        self.statusBar().showMessage(
+            "Clique em qualquer etapa para definir a origem; depois escolha qualquer destino.", 7000)
 
     def cancel_active_modes(self) -> None:
         if self.connect_mode:
@@ -1919,67 +2102,14 @@ class FlowEditorWindow(QMainWindow):
 
     def add_decision(self) -> None:
         self.cancel_active_modes()
-        self._record_action()
-        ids = {node.get("id") for node in self.spec["nodes"]}
-
-        def next_id(prefix: str) -> str:
-            count = 1
-            while f"{prefix}_{count}" in ids:
-                count += 1
-            node_id = f"{prefix}_{count}"
-            ids.add(node_id)
-            return node_id
-
-        decision_id = next_id("decisao")
-        yes_id = next_id("etapa_sim")
-        no_id = next_id("etapa_nao")
-        decision = {
-            "id": decision_id,
-            "title": "Qual é a condição?",
-            "sub": "Escolha Sim ou Não",
-            "shape": "diamond",
-            "style": self.spec.get("meta", {}).get("default_style", "normal"),
-        }
-        if self.spec["nodes"]:
-            anchor = next((item for item in self.spec["nodes"]
-                           if item.get("id") == self.selected_node), self.spec["nodes"][-1])
-            decision.update(below=anchor["id"], gap=65)
-        else:
-            decision.update(cx=400, y=100)
-
-        yes_node = {
-            "id": yes_id,
-            "title": "Etapa do caminho Sim",
-            "sub": "Selecione para editar o destino.",
-            "shape": "box",
-            "style": "alt",
-            "below": decision_id,
-            "gap": 105,
-            "dx": -220,
-        }
-        no_node = {
-            "id": no_id,
-            "title": "Etapa do caminho Não",
-            "sub": "Selecione para editar o destino.",
-            "shape": "box",
-            "style": "bad",
-            "below": decision_id,
-            "gap": 105,
-            "dx": 220,
-        }
-        self.spec["nodes"].extend((decision, yes_node, no_node))
-        self.spec["edges"].extend((
-            {"src": decision_id, "dst": yes_id, "label": "Sim"},
-            {"src": decision_id, "dst": no_id, "label": "Não"},
-        ))
-        self.connection_label_combo.setCurrentIndex(0)
-        self.selected_node = decision_id
-        self.selected_edge = None
-        self._changed(redraw=True)
-        self._refresh_inspector()
-        self.view.ensureVisible(self.view._node_items[decision_id], 70, 70)
+        self._add_graph_node("Qual é a condição?", "", "diamond", "decisao")
+        self.connection_label_combo.setCurrentIndex(self.connection_label_combo.findData("Sim"))
+        self.connect_button.blockSignals(True)
+        self.connect_button.setChecked(True)
+        self.connect_button.blockSignals(False)
+        self.toggle_connect_mode(True)
         self.statusBar().showMessage(
-            "Ramificações Sim e Não criadas. Edite os destinos e continue cada caminho a partir deles.", 7000)
+            "Decisão criada. Escolha qualquer destino para Sim; depois selecione o destino de Não.", 7000)
 
     def _add_graph_node(self, title: str, sub: str, shape: str, id_prefix: str) -> None:
         self._record_action()
@@ -2156,6 +2286,7 @@ class FlowEditorWindow(QMainWindow):
                 edge["dashed"] = True
             else:
                 edge.pop("dashed", None)
+        self._set_connection_style_ui(dashed)
         self._changed(redraw=True)
         self._refresh_inspector()
 
