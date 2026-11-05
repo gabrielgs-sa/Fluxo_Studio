@@ -425,14 +425,22 @@ class DiagramView(QGraphicsView):
 
         # Connections and arrowheads
         routes: list[tuple[dict, list[tuple[float, float]]]] = []
-        arrow_heads: list[QPolygonF] = []
+        arrow_heads: list[tuple[QPolygonF, str]] = []
         for edge_index, edge in enumerate(chart.edges):
             route = chart._edge_route(edge)
             routes.append((edge, route))
             path = QPainterPath(QPointF(*route[0]))
             for point in route[1:]:
                 path.lineTo(QPointF(*point))
-            route_color = self._palette["accent"] if edge_index == selected_edge else self._palette["muted"]
+            label_value = str(edge.get("label", "")).strip().casefold()
+            if edge_index == selected_edge:
+                route_color = self._palette["accent"]
+            elif label_value == "sim":
+                route_color = "#2DD4BF"
+            elif label_value == "n\u00e3o":
+                route_color = "#FB7185"
+            else:
+                route_color = self._palette["muted"]
             hit = QGraphicsPathItem(path)
             hit_pen = QPen(QColor(0, 0, 0, 0), 14)
             hit.setPen(hit_pen)
@@ -461,7 +469,7 @@ class DiagramView(QGraphicsView):
                                             by - wing * math.cos(angle)),
                                     QPointF(bx - wing * math.sin(angle),
                                             by + wing * math.cos(angle))])
-                arrow_heads.append(points)
+                arrow_heads.append((points, route_color))
 
         # Nodes
         for node in chart.nodes.values():
@@ -472,10 +480,10 @@ class DiagramView(QGraphicsView):
             self._node_items[node.id] = item
             scene.addItem(item)
 
-        for points in arrow_heads:
+        for points, arrow_color in arrow_heads:
             arrow = QGraphicsPolygonItem(points)
-            arrow.setPen(QPen(QColor(self._palette["background"]), 0.7))
-            arrow.setBrush(QColor(self._palette["accent"]))
+            arrow.setPen(QPen(QColor(arrow_color), 0.7))
+            arrow.setBrush(QColor(arrow_color))
             arrow.setZValue(3)
             scene.addItem(arrow)
 
@@ -492,7 +500,11 @@ class DiagramView(QGraphicsView):
             y += float(edge.get("dy", 0) or 0)
             label = QGraphicsSimpleTextItem(str(label_text))
             label.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
-            label.setBrush(QColor(self._palette["text"]))
+            normalized_label = str(label_text).strip().casefold()
+            label_color = ("#2DD4BF" if normalized_label == "sim"
+                           else "#FB7185" if normalized_label == "n\u00e3o"
+                           else self._palette["text"])
+            label.setBrush(QColor(label_color))
             label_rect = label.boundingRect()
             anchor = edge.get("anchor", "middle")
             if anchor == "start":
@@ -504,10 +516,10 @@ class DiagramView(QGraphicsView):
             y_pos = y - label_rect.height() / 2
             bg = self._add_rounded_rect(scene, QRectF(x_pos - 6, y_pos - 3,
                 label_rect.width() + 12, label_rect.height() + 6), 6,
-                QPen(Qt.PenStyle.NoPen), QBrush(QColor(self._palette["background"])))
-            bg.setZValue(3)
+                QPen(QColor(label_color), 0.8), QBrush(QColor(self._palette["background"])))
+            bg.setZValue(6)
             label.setPos(x_pos, y_pos)
-            label.setZValue(4)
+            label.setZValue(7)
             scene.addItem(label)
 
         # Diagram legend
@@ -734,8 +746,9 @@ class FlowEditorWindow(QMainWindow):
         add_button.setObjectName("accent")
         add_button.clicked.connect(self.add_node)
         toolrow.addWidget(add_button)
-        decision_button = QPushButton("Nova decisão")
-        decision_button.setToolTip("Criar uma etapa de decisão em formato de losango")
+        decision_button = QPushButton("Sim / Não")
+        decision_button.setToolTip(
+            "Criar uma condição com os caminhos Sim e Não já visíveis no fluxograma.")
         decision_button.clicked.connect(self.add_decision)
         toolrow.addWidget(decision_button)
         route_label = QLabel("Saída:")
@@ -745,7 +758,8 @@ class FlowEditorWindow(QMainWindow):
         self.connection_label_combo.addItem("Sem rótulo", "")
         self.connection_label_combo.addItem("Sim", "Sim")
         self.connection_label_combo.addItem("Não", "Não")
-        self.connection_label_combo.setToolTip("Rótulo a exibir na nova seta")
+        self.connection_label_combo.setToolTip(
+            "Rótulo para conexões criadas manualmente. Use Sim / Não para criar os dois caminhos de uma vez.")
         self.connection_label_combo.setMaximumWidth(120)
         toolrow.addWidget(self.connection_label_combo)
         self.connect_button = QPushButton("Conectar etapas")
@@ -1425,8 +1439,14 @@ class FlowEditorWindow(QMainWindow):
                 edge["dashed"] = True
             self.spec["edges"].append(edge)
             source_spec = next((item for item in self.spec["nodes"] if item.get("id") == src), {})
-            decision_output = source_spec.get("shape") == "diamond" and label in ("Sim", "Não")
-            keep_source = self.keep_connection_source.isChecked() or decision_output
+            is_decision = source_spec.get("shape") == "diamond"
+            decision_output = is_decision and label in ("Sim", "Não")
+            decision_has_sim = any(item.get("src") == src and item.get("label") == "Sim"
+                                    for item in self.spec["edges"])
+            decision_complete = is_decision and label == "Não" and decision_has_sim
+            keep_source = self.keep_connection_source.isChecked() or (is_decision and label == "Sim")
+            if decision_complete:
+                keep_source = False
             next_source = src if keep_source else node_id
             if decision_output and label == "Sim":
                 self.connection_label_combo.setCurrentIndex(self.connection_label_combo.findData("Não"))
@@ -1440,6 +1460,8 @@ class FlowEditorWindow(QMainWindow):
             self.connect_button.setText("Finalizar conexões")
             if decision_output and label == "Sim":
                 next_hint = "Saída ajustada para Não; selecione o destino dessa ramificação."
+            elif decision_complete:
+                next_hint = f"Saídas Sim e Não conectadas. Próxima origem: {node_id}."
             elif keep_source:
                 next_hint = "Selecione outro destino para esta origem."
             else:
@@ -1640,7 +1662,68 @@ class FlowEditorWindow(QMainWindow):
         self._add_graph_node("Nova etapa", "", "box", "etapa")
 
     def add_decision(self) -> None:
-        self._add_graph_node("Nova decisão", "Defina a condição", "diamond", "decisao")
+        self.cancel_active_modes()
+        self._record_action()
+        ids = {node.get("id") for node in self.spec["nodes"]}
+
+        def next_id(prefix: str) -> str:
+            count = 1
+            while f"{prefix}_{count}" in ids:
+                count += 1
+            node_id = f"{prefix}_{count}"
+            ids.add(node_id)
+            return node_id
+
+        decision_id = next_id("decisao")
+        yes_id = next_id("etapa_sim")
+        no_id = next_id("etapa_nao")
+        decision = {
+            "id": decision_id,
+            "title": "Qual é a condição?",
+            "sub": "Escolha Sim ou Não",
+            "shape": "diamond",
+            "style": self.spec.get("meta", {}).get("default_style", "normal"),
+        }
+        if self.spec["nodes"]:
+            anchor = next((item for item in self.spec["nodes"]
+                           if item.get("id") == self.selected_node), self.spec["nodes"][-1])
+            decision.update(below=anchor["id"], gap=65)
+        else:
+            decision.update(cx=400, y=100)
+
+        yes_node = {
+            "id": yes_id,
+            "title": "Etapa do caminho Sim",
+            "sub": "Selecione para editar o destino.",
+            "shape": "box",
+            "style": "alt",
+            "below": decision_id,
+            "gap": 105,
+            "dx": -220,
+        }
+        no_node = {
+            "id": no_id,
+            "title": "Etapa do caminho Não",
+            "sub": "Selecione para editar o destino.",
+            "shape": "box",
+            "style": "bad",
+            "below": decision_id,
+            "gap": 105,
+            "dx": 220,
+        }
+        self.spec["nodes"].extend((decision, yes_node, no_node))
+        self.spec["edges"].extend((
+            {"src": decision_id, "dst": yes_id, "label": "Sim"},
+            {"src": decision_id, "dst": no_id, "label": "Não"},
+        ))
+        self.connection_label_combo.setCurrentIndex(0)
+        self.selected_node = decision_id
+        self.selected_edge = None
+        self._changed(redraw=True)
+        self._refresh_inspector()
+        self.view.ensureVisible(self.view._node_items[decision_id], 70, 70)
+        self.statusBar().showMessage(
+            "Ramificações Sim e Não criadas. Edite os destinos e continue cada caminho a partir deles.", 7000)
 
     def _add_graph_node(self, title: str, sub: str, shape: str, id_prefix: str) -> None:
         self._record_action()

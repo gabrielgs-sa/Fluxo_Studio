@@ -96,7 +96,7 @@ Sem `-o`, o comando gera um PDF com o mesmo nome do arquivo JSON. O tema pode se
 | Mover uma etapa | Arraste a etapa para a posição desejada. |
 | Navegar pelo diagrama | Arraste uma área vazia do canvas. |
 | Aproximar ou afastar | Role a roda do mouse sobre a área que deseja inspecionar. Os botões `+`, `-` e **Ajustar à tela** também controlam a visualização. |
-| Criar uma decisão | Use **Nova decisão** para inserir um losango. Escolha **Sim** ou **Não** em **Saída** e conecte o destino correspondente. Após criar a saída Sim, o seletor avança para Não automaticamente. A origem da decisão é mantida para facilitar a criação das duas saídas. |
+| Criar uma decisão | Use **Sim / Não** para inserir uma condição com as duas saídas e etapas de destino já visíveis. Edite a condição e os destinos no painel lateral; depois conecte as próximas etapas a partir de cada destino. |
 | Conectar várias etapas | Ative **Conectar etapas**. Se nenhuma etapa estiver selecionada, clique numa origem; depois continue clicando nos destinos. Por padrão, cada destino vira a próxima origem, criando uma sequência contínua. Marque **Manter origem** para criar várias setas a partir da mesma etapa. Encerre com Escape ou **Finalizar conexões**. |
 | Unir caminhos convergentes | Ative **Unir caminhos** e clique em pelo menos duas origens. Quando o botão indicar **Selecionar destino**, clique nele e escolha um bloco existente para receber as setas. Para criar um bloco novo de convergência, clique em **+ Nova etapa**. Pressione Escape ou **Cancelar união** para sair sem alterar o fluxo. |
 | Editar uma conexão | Selecione a seta no diagrama ou na lista **Setas**. Altere o rótulo, a origem, o destino e o traçado; também é possível inverter a direção. |
