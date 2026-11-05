@@ -43,7 +43,7 @@ QFrame#inspectorHeader {
 QLabel#brand {
   color: #71ddc8;
   font-size: 10.5pt;
-  font-weight: 750;
+  font-weight: 700;
 }
 QLabel#pageTitle {
   color: #f3f6fa;
